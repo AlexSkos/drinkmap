@@ -1,29 +1,48 @@
 {
   "expo": {
-    "name": "drinkmap",
+    "name": "Mapa de los fuentes",
     "slug": "drinkmap",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "version": "0.0.1",
+    "scheme": "drinkmap",
+    "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "platforms": ["android", "ios"],
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#6b97b0"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.vinchenso.drinkmap",
+      "versionCode": 1,
+      "userInterfaceStyle": "light",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundColor": "#6c97b0"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "updates": { "enabled": false },
+
+    "plugins": [
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
+        }
+      ]
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "d821c110-fc1d-4c31-b8ec-6bcd52648abb"
+      }
     }
   }
 }
+
