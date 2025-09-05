@@ -19,9 +19,8 @@ import type { RootStackParamList } from "../../App";
 import { useLang } from "../i18n/LanguageContext";
 import AdBanner from "../components/AdBanner";
 
-
 /* =======================
-   KNOBS (редактируй здесь)
+   KNOBS
 ======================= */
 const BRAND_COLOR = "#6c97b0";
 const TOPBAR_H = 100;
@@ -33,10 +32,10 @@ const LANG_SWITCHER_LEFT = 12;
 
 // Геометрия сетки
 const GRID_HPAD = 16;
-const COL_GAP   = 14;
+const COL_GAP = 14;
 const MIN_TILE_W = 150;
 
-// Вертикальные размеры карточек
+// Размеры карточек/текста
 const SCALE = 0.8;
 const BASE_TILE_HEIGHT = 145;
 const TILE_HEIGHT = Math.round(BASE_TILE_HEIGHT * SCALE);
@@ -47,12 +46,11 @@ const SUBTITLE_FS = Math.max(12, Math.round(15 * SCALE));
 
 // Шапка
 const HEADER_HEIGHT = 170;
-const HEADER_PAD_H  = 30;
+const HEADER_PAD_H = 30;
 const GRID_TOP_MARGIN = 85;
 
-// Кнопка Support
-const SUPPORT_WIDTH_PCT = 1.0;
-const SUPPORT_HEIGHT    = Math.round(TILE_HEIGHT * 0.9);
+// Большая кнопка Support
+const SUPPORT_HEIGHT = Math.round(TILE_HEIGHT * 0.9);
 
 /* =======================
    COLORS / ASSETS
@@ -91,17 +89,16 @@ export default function MenuScreen({ navigation }: Props) {
   React.useEffect(() => {
     (async () => {
       try {
-        // 1) сначала пытаемся взять координаты из кэша
+        // 1) сперва из кэша
         const saved = await AsyncStorage.getItem(LAST_LOC_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (typeof parsed?.lat === "number" && typeof parsed?.lng === "number") {
             setLoc(parsed);
-            return; // найдено — НИЧЕГО не запрашиваем у геолокации
+            return;
           }
         }
-
-        // 2) если в кэше нет — один раз запрашиваем и сохраняем
+        // 2) если нет — запросить
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") return;
         const pos = await Location.getCurrentPositionAsync({
@@ -114,19 +111,9 @@ export default function MenuScreen({ navigation }: Props) {
         };
         setLoc(value);
         await AsyncStorage.setItem(LAST_LOC_KEY, JSON.stringify(value));
-      } catch {
-        // молча игнорируем — просто не покажем координаты
-      }
+      } catch {}
     })();
   }, []);
-
-  const items: MenuItem[] = [
-    { key: "map",     title: t("map"),     emoji: "🗺️", onPress: () => navigation.replace("Map") },
-    { key: "report",  title: t("report"),  emoji: "🛠️", onPress: () => navigation.navigate("Report") },
-    { key: "guide",   title: t("guide"),   emoji: "📘", onPress: () => navigation.navigate("History") },
-    { key: "contact", title: t("contact"), emoji: "✉️", onPress: () => navigation.navigate("Contact") },
-    { key: "support", title: t("support"), emoji: "💙", onPress: () => navigation.navigate("Support") },
-  ];
 
   const locText = React.useMemo(() => {
     if (!loc) return "—";
@@ -143,6 +130,14 @@ export default function MenuScreen({ navigation }: Props) {
   const canTwoCols = (gridW - COL_GAP) / 2 >= MIN_TILE_W;
   const cols = canTwoCols ? 2 : 1;
   const tileW = cols === 2 ? Math.floor((gridW - COL_GAP) / 2) : Math.floor(gridW);
+
+  // Кнопки сетки (без support — он отдельный big CTA)
+  const items: MenuItem[] = [
+    { key: "map", title: t("map"), emoji: "🗺️", onPress: () => navigation.replace("Map") },
+    { key: "report", title: t("report"), emoji: "🛠️", onPress: () => navigation.navigate("Report") },
+    { key: "guide", title: t("guide"), emoji: "📘", onPress: () => navigation.navigate("History") },
+    { key: "contact", title: t("contact"), emoji: "✉️", onPress: () => navigation.navigate("Contact") },
+  ];
 
   return (
     <View style={[styles.root, { paddingBottom: BOTBAR_H + insets.bottom }]}>
@@ -206,28 +201,32 @@ export default function MenuScreen({ navigation }: Props) {
           })}
         </View>
 
-        {/* Кнопка Support — отдельная, адаптивная */}
+        {/* Большая кнопка Support — на всю ширину сетки */}
         <Pressable
-  style={({ pressed }) => [
-    styles.cta,
-    { width: `${ROW_TOTAL_PCT}%`, backgroundColor: COLORS.brand },
-    pressed && { opacity: 0.9 },
-  ]}
-  onPress={() => navigation.navigate("Support")} // ← было пусто
->
-  <Text style={styles.ctaText}>
-    <Text style={{ color: "#e11d48" }}>♥ </Text>
-    {t("support")}
-  </Text>
-</Pressable>
+          style={({ pressed }) => [
+            styles.cta,
+            {
+              width: gridW,
+              height: SUPPORT_HEIGHT,
+              alignSelf: "center",
+              backgroundColor: COLORS.brand,
+            },
+            pressed && { opacity: 0.9 },
+          ]}
+          onPress={() => navigation.navigate("Support")}
+          android_ripple={{ color: "#d8e7ef" }}
+        >
+          <Text style={styles.ctaText}>
+            <Text style={{ color: "#e11d48" }}>♥ </Text>
+            {t("support")}
+          </Text>
+        </Pressable>
       </View>
 
+      {/* Реклама */}
       <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-  <AdBanner />
-</View>
-
-      {/* Нижняя полоса */}
-      
+        <AdBanner />
+      </View>
     </View>
   );
 }
@@ -330,11 +329,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: Math.max(14, Math.round(SUBTITLE_FS * 1.05)),
   },
-
-
 });
-
-
 
 
 
