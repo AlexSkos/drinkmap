@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Mapa de los fuentes",
+    "name": "Valencia Fountain Map",
     "slug": "drinkmap",
-    "version": "0.0.1",
+    "version": "1.0.1",
     "scheme": "drinkmap",
     "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "platforms": ["android", "ios"],
     "splash": {
       "image": "./assets/splash.png",
@@ -33,7 +33,7 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
+          "androidAppId": "ca-app-pub-7043971991251749~3604125787"
         }
       ]
     ],
@@ -42,7 +42,9 @@
       "eas": {
         "projectId": "d821c110-fc1d-4c31-b8ec-6bcd52648abb"
       }
-    }
+    },
+   "privacyPolicyUrl": "https://alexskos.github.io/drinkmap-privacy/privacy.html"
+
   }
 }
 

@@ -1,5 +1,5 @@
 // src/screens/MenuScreen.tsx
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -17,7 +17,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../App";
 import { useLang } from "../i18n/LanguageContext";
-import AdBanner from "../components/AdBanner";
+
+// ↓↓↓ AdMob
+import mobileAds, {
+  BannerAd,
+  BannerAdSize,
+  TestIds,
+} from "react-native-google-mobile-ads";
 
 /* =======================
    KNOBS
@@ -78,10 +84,19 @@ type MenuItem = {
   onPress: () => void;
 };
 
+// PROD ID сюда
+const PROD_BANNER_UNIT_ID = "ca-app-pub-7043971991251749~3604125787";
+const BANNER_UNIT_ID = __DEV__ ? TestIds.BANNER : PROD_BANNER_UNIT_ID;
+
 export default function MenuScreen({ navigation }: Props) {
   const { width: screenW } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { lang, setLang, t } = useLang();
+
+  // Инициализация AdMob SDK один раз
+  useEffect(() => {
+    mobileAds().initialize();
+  }, []);
 
   // геолокация в топ-баре (замораживаем до рестарта)
   const [loc, setLoc] = React.useState<{ lat: number; lng: number; acc?: number } | null>(null);
@@ -223,9 +238,16 @@ export default function MenuScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      {/* Реклама */}
+      {/* Реклама (встроенный баннер AdMob) */}
       <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-        <AdBanner />
+        <BannerAd
+          unitId={BANNER_UNIT_ID}
+          // Adaptive баннер сам подстроится по высоте, ширина берётся из контейнера
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{
+            requestNonPersonalizedAdsOnly: true,
+          }}
+        />
       </View>
     </View>
   );
