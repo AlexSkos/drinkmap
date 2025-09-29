@@ -28,23 +28,15 @@
       "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
     },
     "updates": { "enabled": false },
-
     "plugins": [
       [
         "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-7043971991251749~3604125787"
-        }
+        { "androidAppId": "ca-app-pub-7043971991251749~3604125787" }
       ]
     ],
-
     "extra": {
-      "eas": {
-        "projectId": "d821c110-fc1d-4c31-b8ec-6bcd52648abb"
-      }
-    },
-   "privacyPolicyUrl": "https://alexskos.github.io/drinkmap-privacy/privacy.html"
-
+      "eas": { "projectId": "d821c110-fc1d-4c31-b8ec-6bcd52648abb" }
+    }
   }
 }
 
