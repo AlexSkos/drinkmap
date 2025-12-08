@@ -2,7 +2,7 @@
   "expo": {
     "name": "Valencia Fountain Map",
     "slug": "drinkmap",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "scheme": "drinkmap",
     "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
