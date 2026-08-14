@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@react-native-community/cli": "^20.0.0",
     "@types/react": "~19.1.10",
     "dotenv": "^17.2.1",
     "exifr": "^7.1.3",

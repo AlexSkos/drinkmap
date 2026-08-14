@@ -12,11 +12,14 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "android": {
-        "buildType": "app-bundle"
-      }
-    }
+  "autoIncrement": true,
+  "env": {
+    "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+  },
+  "android": {
+    "buildType": "app-bundle"
+  }
+}
   },
   "submit": {
     "production": {}
