@@ -1,6 +1,6 @@
 // src/screens/MapScreen.tsx
 import React from "react";
-import { View, StyleSheet, ActivityIndicator, Text } from "react-native";
+import { View, StyleSheet, ActivityIndicator, Text, Image } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
@@ -23,6 +23,10 @@ type Fountain = {
   imageKey?: string | null;
   ext?: string | null;
 };
+
+const FALLBACK_FOUNTAIN_IMAGE = require("../../assets/fountain_defolt.jpg");
+const FALLBACK_FOUNTAIN_ASSET_URI =
+  Image.resolveAssetSource(FALLBACK_FOUNTAIN_IMAGE)?.uri ?? null;
 
 const ALL_FOUNTAINS: Fountain[] = (fountainsData as any[])
   .map((f: any, idx: number) => {
@@ -59,7 +63,7 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
 
 async function getFallbackBase64(): Promise<string | null> {
   try {
-    const asset = Asset.fromModule(require("../../assets/fountain_defolt.jpg"));
+    const asset = Asset.fromModule(FALLBACK_FOUNTAIN_IMAGE);
     await asset.downloadAsync(); // no-op в релизе, но безопасно
     const uri = asset.localUri || asset.uri;
     const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -81,7 +85,8 @@ export default function MapScreen({ navigation }: Props) {
 
   const [userPos, setUserPos] = React.useState<{ lat: number; lng: number } | null>(null);
   const [loadingLoc, setLoadingLoc] = React.useState(true);
-  const fallbackRef = React.useRef<string>(TRANSPARENT_DATA_URL); // держим актуальный фолбэк тут
+  const [fallbackSrc, setFallbackSrc] = React.useState<string | null>(null);
+  const [loadingFallback, setLoadingFallback] = React.useState(true);
 
   React.useEffect(() => {
     (async () => {
@@ -107,15 +112,16 @@ export default function MapScreen({ navigation }: Props) {
   React.useEffect(() => {
     (async () => {
       const b64 = await getFallbackBase64();
-      if (!b64) return;
-      fallbackRef.current = b64;
+      const nextFallback = b64 ?? FALLBACK_FOUNTAIN_ASSET_URI ?? TRANSPARENT_DATA_URL;
+      setFallbackSrc(nextFallback);
       // прокидываем внутрь уже отрисованной страницы
       webRef.current?.injectJavaScript(`
         (function(){
-          window.__FALLBACK = ${JSON.stringify(b64)};
+          window.__FALLBACK = ${JSON.stringify(nextFallback)};
         })();
         true;
       `);
+      setLoadingFallback(false);
     })();
   }, []);
 
@@ -137,6 +143,8 @@ export default function MapScreen({ navigation }: Props) {
 
   const html = React.useMemo(() => {
     const center = userPos ?? { lat: 39.4699, lng: -0.3763 };
+    const fallbackImageSrc =
+      fallbackSrc ?? FALLBACK_FOUNTAIN_ASSET_URI ?? TRANSPARENT_DATA_URL;
 
     const dataNearby = JSON.stringify(
       nearby.map(f => ({
@@ -215,8 +223,7 @@ export default function MapScreen({ navigation }: Props) {
   const ALL_POINTS    = ${dataAll};
   const center = [${center.lat}, ${center.lng}];
 
-  // моментальный фолбэк (прозрачный), может быть заменён из RN: window.__FALLBACK
-  window.__FALLBACK = window.__FALLBACK || ${JSON.stringify(TRANSPARENT_DATA_URL)};
+  window.__FALLBACK = ${JSON.stringify(fallbackImageSrc)};
 
   const map = L.map('map', { zoomControl:false }).setView(center, 15);
 
@@ -286,11 +293,22 @@ export default function MapScreen({ navigation }: Props) {
     markersById = Object.create(null);
   }
 
+  function hasPhotoUrl(value){
+    return typeof value === 'string' && value.trim().length > 0;
+  }
+
+  function escapeAttr(value){
+    return String(value)
+      .replace(/&/g,'&amp;')
+      .replace(/"/g,'&quot;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;');
+  }
+
   function imgTagFor(p){
-    const src = (p.ext && p.ext.length>0) ? p.ext : window.__FALLBACK;
-    // корректный onerror c одинарными кавычками внутри
-    return '<img class="photo" src=\"'+src+'\" alt=\"fountain\" '+
-           'onerror=\"this.onerror=null; this.src=\\''+window.__FALLBACK+'\\';\" />';
+    const src = hasPhotoUrl(p.ext) ? p.ext.trim() : window.__FALLBACK;
+    return '<img class="photo" src="'+escapeAttr(src)+'" alt="fountain" '+
+           'onerror="this.onerror=null; this.src=window.__FALLBACK;" />';
   }
 
   function render(points){
@@ -348,7 +366,7 @@ export default function MapScreen({ navigation }: Props) {
 </body>
 </html>`;
     // eslint-disable-next-line
-  }, [nearby, userPos, t]);
+  }, [fallbackSrc, nearby, userPos, t]);
 
   const onMessage = async (e: WebViewMessageEvent) => {
     try {
@@ -371,7 +389,7 @@ export default function MapScreen({ navigation }: Props) {
     } catch {}
   };
 
-  if (loadingLoc || !userPos) {
+  if (loadingLoc || loadingFallback || !userPos) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator />

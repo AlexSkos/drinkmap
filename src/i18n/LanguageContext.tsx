@@ -127,7 +127,7 @@ type LangKeys = keyof typeof STR["en"];
 type Ctx = {
   lang: Lang;
   setLang: (l: Lang) => void;
-  t: <K extends LangKeys>(k: K) => (typeof STR)["en"][K];
+  t: <K extends LangKeys>(k: K) => string;
 };
 
 const LanguageContext = React.createContext<Ctx>({

@@ -17,13 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../App";
 import { useLang } from "../i18n/LanguageContext";
+import { useAdsConsent } from "../ads/AdsConsentContext";
 
 // ↓↓↓ AdMob
-import mobileAds, {
-  BannerAd,
-  BannerAdSize,
-  TestIds,
-} from "react-native-google-mobile-ads";
+import { BannerAd, BannerAdSize, TestIds } from "react-native-google-mobile-ads";
 
 /* =======================
    KNOBS
@@ -85,18 +82,22 @@ type MenuItem = {
 };
 
 // PROD ID сюда
-const PROD_BANNER_UNIT_ID = "ca-app-pub-7043971991251749~3604125787";
+const PROD_BANNER_UNIT_ID = "ca-app-pub-7043971991251749/4304794200";
 const BANNER_UNIT_ID = __DEV__ ? TestIds.BANNER : PROD_BANNER_UNIT_ID;
 
 export default function MenuScreen({ navigation }: Props) {
   const { width: screenW } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { lang, setLang, t } = useLang();
+  const { adsReady, privacyOptionsRequired, showPrivacyOptions } = useAdsConsent();
 
-  // Инициализация AdMob SDK один раз
-  useEffect(() => {
-    mobileAds().initialize();
-  }, []);
+  const handlePrivacyOptionsPress = React.useCallback(() => {
+    showPrivacyOptions().catch((error) => {
+      if (__DEV__) {
+        console.warn("Privacy options form failed:", error);
+      }
+    });
+  }, [showPrivacyOptions]);
 
   // геолокация в топ-баре (замораживаем до рестарта)
   const [loc, setLoc] = React.useState<{ lat: number; lng: number; acc?: number } | null>(null);
@@ -177,6 +178,15 @@ export default function MenuScreen({ navigation }: Props) {
           </Pressable>
         </View>
 
+        {privacyOptionsRequired && (
+          <Pressable
+            onPress={handlePrivacyOptionsPress}
+            style={({ pressed }) => [styles.privacyBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.privacyText}>{lang === "es" ? "Privacidad" : "Privacy"}</Text>
+          </Pressable>
+        )}
+
         <Text style={styles.topBarText} numberOfLines={1}>
           {locText}
         </Text>
@@ -240,14 +250,13 @@ export default function MenuScreen({ navigation }: Props) {
 
       {/* Реклама (встроенный баннер AdMob) */}
       <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-        <BannerAd
-          unitId={BANNER_UNIT_ID}
-          // Adaptive баннер сам подстроится по высоте, ширина берётся из контейнера
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-        />
+        {adsReady && (
+          <BannerAd
+            unitId={BANNER_UNIT_ID}
+            // Adaptive баннер сам подстроится по высоте, ширина берётся из контейнера
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          />
+        )}
       </View>
     </View>
   );
@@ -280,6 +289,19 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 13,
+  },
+  privacyBtn: {
+    position: "absolute",
+    left: 12,
+    top: 12,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  privacyText: {
+    color: "#446577",
+    fontWeight: "800",
   },
 
   langSwitcher: {

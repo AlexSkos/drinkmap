@@ -31,7 +31,7 @@
     "plugins": [
       [
         "react-native-google-mobile-ads",
-        { "androidAppId": "ca-app-pub-7043971991251749~3604125787" }
+        { "androidAppId": "ca-app-pub-7043971991251749~7548286679" }
       ]
     ],
     "extra": {
@@ -39,4 +39,3 @@
     }
   }
 }
-

@@ -15,6 +15,7 @@ import ContactScreen from "./src/screens/ContactScreen";
 import SupportScreen from "./src/screens/SupportScreen";
 
 import { LanguageProvider } from "./src/i18n/LanguageContext";
+import { AdsConsentProvider } from "./src/ads/AdsConsentContext";
 
 // Экспортируем тип для экранов — на него ссылаются экраны через `import type { RootStackParamList } from "../../App"`
 export type RootStackParamList = {
@@ -32,6 +33,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
     <LanguageProvider>
+      <AdsConsentProvider>
        <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
@@ -45,10 +47,10 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
       </SafeAreaProvider>
+      </AdsConsentProvider>
     </LanguageProvider>
   );
 }
-
 
 
 
