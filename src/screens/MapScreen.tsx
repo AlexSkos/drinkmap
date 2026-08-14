@@ -4,7 +4,7 @@ import { View, StyleSheet, ActivityIndicator, Text, Image } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Asset } from "expo-asset";
 
 import fountainsData from "../data/fountains_with_photos.json";
