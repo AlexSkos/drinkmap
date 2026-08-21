@@ -52,9 +52,6 @@ const HEADER_HEIGHT = 170;
 const HEADER_PAD_H = 30;
 const GRID_TOP_MARGIN = 85;
 
-// Большая кнопка Support
-const SUPPORT_HEIGHT = Math.round(TILE_HEIGHT * 0.9);
-
 /* =======================
    COLORS / ASSETS
 ======================= */
@@ -62,7 +59,7 @@ const COLORS = {
   brand: BRAND_COLOR,
   bg: "#ffffff",
   title: "#0f172a",
-  tileBg: "#ffffff",
+  tileBg: "#d2dfe6",
   tileText: "#0f172a",
 };
 
@@ -147,7 +144,6 @@ export default function MenuScreen({ navigation }: Props) {
   const cols = canTwoCols ? 2 : 1;
   const tileW = cols === 2 ? Math.floor((gridW - COL_GAP) / 2) : Math.floor(gridW);
 
-  // Кнопки сетки (без support — он отдельный big CTA)
   const items: MenuItem[] = [
     { key: "map", title: t("map"), emoji: "🗺️", onPress: () => navigation.replace("Map") },
     { key: "report", title: t("report"), emoji: "🛠️", onPress: () => navigation.navigate("Report") },
@@ -226,26 +222,6 @@ export default function MenuScreen({ navigation }: Props) {
           })}
         </View>
 
-        {/* Большая кнопка Support — на всю ширину сетки */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.cta,
-            {
-              width: gridW,
-              height: SUPPORT_HEIGHT,
-              alignSelf: "center",
-              backgroundColor: COLORS.brand,
-            },
-            pressed && { opacity: 0.9 },
-          ]}
-          onPress={() => navigation.navigate("Support")}
-          android_ripple={{ color: "#d8e7ef" }}
-        >
-          <Text style={styles.ctaText}>
-            <Text style={{ color: "#e11d48" }}>♥ </Text>
-            {t("support")}
-          </Text>
-        </Pressable>
       </View>
 
       {/* Реклама (встроенный баннер AdMob) */}
@@ -334,7 +310,7 @@ const styles = StyleSheet.create({
   },
   hero: { width: "100%", height: "85%" },
 
-  grid: { flex: 1, paddingBottom: 16 },
+  grid: { paddingBottom: 16 },
   tilesWrap: {
     alignSelf: "center",
     flexDirection: "row",
@@ -361,18 +337,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  cta: {
-    borderRadius: TILE_RADIUS,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    ...TILE_SHADOW,
-  },
-  ctaText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: Math.max(14, Math.round(SUBTITLE_FS * 1.05)),
-  },
 });
 
 

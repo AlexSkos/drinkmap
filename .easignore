@@ -3,14 +3,20 @@
 # dependencies
 node_modules/
 
+# VCS and editor state
+.git/
+.idea/
+
 # Expo
 .expo/
-.eas-build-inspect/
+.expo-shared/
 dist/
 web-build/
 expo-env.d.ts
 
 # Native
+/android
+/ios
 .kotlin/
 *.orig.*
 *.jks
@@ -19,10 +25,18 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Native build artifacts
+.gradle/
+**/.gradle/
+**/build/
+**/.cxx/
+**/local.properties
+
 # Metro
 .metro-health-check*
 
 # debug
+*.log
 npm-debug.*
 yarn-debug.*
 yarn-error.*
@@ -32,7 +46,14 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
 *.tsbuildinfo
+
+# local build outputs
+builds/
+
+# EAS local inspection output
+.eas-build-inspect/

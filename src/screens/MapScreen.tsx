@@ -1,6 +1,6 @@
 // src/screens/MapScreen.tsx
 import React from "react";
-import { View, StyleSheet, ActivityIndicator, Text, Image } from "react-native";
+import { View, StyleSheet, ActivityIndicator, Text, Linking, AppState } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
@@ -24,9 +24,10 @@ type Fountain = {
   ext?: string | null;
 };
 
+type UserPosition = { lat: number; lng: number };
+
 const FALLBACK_FOUNTAIN_IMAGE = require("../../assets/fountain_defolt.jpg");
-const FALLBACK_FOUNTAIN_ASSET_URI =
-  Image.resolveAssetSource(FALLBACK_FOUNTAIN_IMAGE)?.uri ?? null;
+const DEFAULT_USER_POS: UserPosition = { lat: 39.4699, lng: -0.3763 };
 
 const ALL_FOUNTAINS: Fountain[] = (fountainsData as any[])
   .map((f: any, idx: number) => {
@@ -64,13 +65,19 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
 async function getFallbackBase64(): Promise<string | null> {
   try {
     const asset = Asset.fromModule(FALLBACK_FOUNTAIN_IMAGE);
-    await asset.downloadAsync(); // no-op в релизе, но безопасно
-    const uri = asset.localUri || asset.uri;
+    const downloadedAsset = await asset.downloadAsync();
+    const uri = downloadedAsset.localUri ?? asset.localUri;
+    if (!uri || /^https?:\/\//i.test(uri)) {
+      throw new Error("Fallback fountain asset was not available as a local file");
+    }
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    return `data:image/jpg;base64,${base64}`;
+    return `data:image/jpeg;base64,${base64}`;
   } catch (e) {
+    if (__DEV__) {
+      console.warn("Fallback fountain image failed to load:", e);
+    }
     return null;
   }
 }
@@ -81,38 +88,203 @@ const TRANSPARENT_DATA_URL =
 
 export default function MapScreen({ navigation }: Props) {
   const webRef = React.useRef<WebView>(null);
-  const { t } = useLang();
+  const { lang, t } = useLang();
 
-  const [userPos, setUserPos] = React.useState<{ lat: number; lng: number } | null>(null);
+  const locationSubscriptionRef = React.useRef<{ remove: () => void } | null>(null);
+  const appStateRef = React.useRef(AppState.currentState);
+  const isMountedRef = React.useRef(true);
+  const watcherGenerationRef = React.useRef(0);
+  const resumeGenerationRef = React.useRef(0);
+  const userPosRef = React.useRef<UserPosition | null>(null);
+
+  const [userPos, setUserPos] = React.useState<UserPosition | null>(null);
   const [loadingLoc, setLoadingLoc] = React.useState(true);
   const [fallbackSrc, setFallbackSrc] = React.useState<string | null>(null);
   const [loadingFallback, setLoadingFallback] = React.useState(true);
 
-  React.useEffect(() => {
-    (async () => {
+  const applyUserPosition = React.useCallback(
+    (position: UserPosition, options?: { updateState?: boolean; recenter?: boolean }) => {
+      if (!isMountedRef.current) return;
+
+      const hadPosition = userPosRef.current !== null;
+      userPosRef.current = position;
+
+      if (options?.updateState || !hadPosition) {
+        setUserPos(position);
+      }
+
+      webRef.current?.injectJavaScript(`
+        (function(){
+          if (window.updateUserPosition) {
+            window.updateUserPosition(
+              ${JSON.stringify(position.lat)},
+              ${JSON.stringify(position.lng)},
+              ${JSON.stringify(Boolean(options?.recenter))}
+            );
+          }
+        })();
+        true;
+      `);
+    },
+    []
+  );
+
+  const stopLocationWatcher = React.useCallback(() => {
+    watcherGenerationRef.current += 1;
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+  }, []);
+
+  const ensureForegroundLocationPermission = React.useCallback(async () => {
+    const current = await Location.getForegroundPermissionsAsync();
+    if (current.status === "granted") return true;
+
+    const requested = await Location.requestForegroundPermissionsAsync();
+    return requested.status === "granted";
+  }, []);
+
+  const startLocationWatcher = React.useCallback(async () => {
+    stopLocationWatcher();
+    const generation = watcherGenerationRef.current;
+
+    try {
+      const hasPermission = await ensureForegroundLocationPermission();
+      if (!hasPermission || generation !== watcherGenerationRef.current || !isMountedRef.current) {
+        return;
+      }
+
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: 5,
+          timeInterval: 3000,
+        },
+        (nextLocation) => {
+          applyUserPosition({
+            lat: nextLocation.coords.latitude,
+            lng: nextLocation.coords.longitude,
+          });
+        }
+      );
+
+      if (
+        generation !== watcherGenerationRef.current ||
+        appStateRef.current !== "active" ||
+        !isMountedRef.current
+      ) {
+        subscription.remove();
+        return;
+      }
+
+      locationSubscriptionRef.current = subscription;
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("Location watcher failed to start:", error);
+      }
+    }
+  }, [applyUserPosition, ensureForegroundLocationPermission, stopLocationWatcher]);
+
+  const refreshCurrentPositionAndRestartWatcher = React.useCallback(
+    async (options?: { initial?: boolean; resumeGeneration?: number }) => {
+      const isInitial = Boolean(options?.initial);
+
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          setUserPos({ lat: 39.4699, lng: -0.3763 });
+        const hasPermission = await ensureForegroundLocationPermission();
+        if (!hasPermission) {
+          if (!userPosRef.current) {
+            applyUserPosition(DEFAULT_USER_POS, { updateState: true });
+          }
+          stopLocationWatcher();
           return;
         }
-        const pos = await Location.getCurrentPositionAsync({
+
+        const currentPosition = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      } catch {
-        setUserPos({ lat: 39.4699, lng: -0.3763 });
+
+        if (
+          options?.resumeGeneration !== undefined &&
+          options.resumeGeneration !== resumeGenerationRef.current
+        ) {
+          return;
+        }
+        if (!isMountedRef.current) return;
+
+        applyUserPosition(
+          {
+            lat: currentPosition.coords.latitude,
+            lng: currentPosition.coords.longitude,
+          },
+          { updateState: isInitial, recenter: false }
+        );
+
+        if (appStateRef.current === "active") {
+          await startLocationWatcher();
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn("Current location refresh failed:", error);
+        }
+        if (
+          options?.resumeGeneration !== undefined &&
+          options.resumeGeneration !== resumeGenerationRef.current
+        ) {
+          return;
+        }
+        if (!isMountedRef.current) return;
+        if (!userPosRef.current) {
+          applyUserPosition(DEFAULT_USER_POS, { updateState: true });
+        }
+        if (appStateRef.current === "active") {
+          await startLocationWatcher();
+        }
       } finally {
-        setLoadingLoc(false);
+        if (isInitial && isMountedRef.current) {
+          setLoadingLoc(false);
+        }
       }
-    })();
-  }, []);
+    },
+    [
+      applyUserPosition,
+      ensureForegroundLocationPermission,
+      startLocationWatcher,
+      stopLocationWatcher,
+    ]
+  );
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    void refreshCurrentPositionAndRestartWatcher({ initial: true });
+
+    const appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+      const previousAppState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (nextAppState === "active" && previousAppState !== "active") {
+        const resumeGeneration = (resumeGenerationRef.current += 1);
+        void refreshCurrentPositionAndRestartWatcher({ resumeGeneration });
+        return;
+      }
+
+      if (nextAppState === "background" || nextAppState === "inactive") {
+        resumeGenerationRef.current += 1;
+        stopLocationWatcher();
+      }
+    });
+
+    return () => {
+      isMountedRef.current = false;
+      resumeGenerationRef.current += 1;
+      appStateSubscription.remove();
+      stopLocationWatcher();
+    };
+  }, [refreshCurrentPositionAndRestartWatcher, stopLocationWatcher]);
 
   // грузим base64 фолбэк в фоне и заинжектим его в WebView
   React.useEffect(() => {
     (async () => {
       const b64 = await getFallbackBase64();
-      const nextFallback = b64 ?? FALLBACK_FOUNTAIN_ASSET_URI ?? TRANSPARENT_DATA_URL;
+      const nextFallback = b64 ?? TRANSPARENT_DATA_URL;
       setFallbackSrc(nextFallback);
       // прокидываем внутрь уже отрисованной страницы
       webRef.current?.injectJavaScript(`
@@ -143,8 +315,7 @@ export default function MapScreen({ navigation }: Props) {
 
   const html = React.useMemo(() => {
     const center = userPos ?? { lat: 39.4699, lng: -0.3763 };
-    const fallbackImageSrc =
-      fallbackSrc ?? FALLBACK_FOUNTAIN_ASSET_URI ?? TRANSPARENT_DATA_URL;
+    const fallbackImageSrc = fallbackSrc ?? TRANSPARENT_DATA_URL;
 
     const dataNearby = JSON.stringify(
       nearby.map(f => ({
@@ -164,26 +335,33 @@ export default function MapScreen({ navigation }: Props) {
 
     const MENU_TXT = t("menu");
     const ALL_TXT  = t("all");
+    const DIRECTIONS_TXT = lang === "es" ? "➤ Cómo llegar" : "➤ Get Directions";
 
     return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/@tomickigrzegorz/leaflet-rotate@0.2.3/dist/leaflet-rotate.css"/>
 <style>
   html,body,#map{height:100%;margin:0}
+  .leaflet-container{touch-action:none}
   .leaflet-control-attribution{font-size:10px}
   .leaflet-tile-pane.filter-bw{filter:grayscale(1) contrast(1.05)}
   .leaflet-tile-pane.filter-blue{filter:grayscale(1) sepia(.15) hue-rotate(190deg) saturate(2)}
 
-  .card{width:260px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  .photo{width:100%;height:150px;border-radius:14px;object-fit:cover;display:block;background:#eee}
-  .title{font-weight:800;margin:10px 0 6px;font-size:15px}
-  .note{color:#333;font-size:13px;margin-top:2px}
-  .stars{display:flex;gap:6px;margin:8px 0 2px}
+  .leaflet-popup-content-wrapper{border-radius:18px;padding:0;overflow:hidden}
+  .leaflet-popup-content{margin:0}
+  .card{width:min(276px,calc(100vw - 56px));box-sizing:border-box;padding:10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#fff;border-radius:18px}
+  .photo{width:100%;height:136px;border-radius:14px;object-fit:cover;display:block;background:#eef2f7}
+  .title{font-weight:800;margin:10px 0 5px;font-size:15px;color:#0f172a;line-height:1.2}
+  .note{color:#475569;font-size:12px;line-height:1.25;margin-top:0}
+  .stars{display:flex;gap:6px;margin:9px 0 10px}
   .star{font-size:20px;line-height:1;cursor:pointer}
   .star.gray{color:#b7bcc6}
   .star.gold{color:#22c55e}
+  .dir-btn{width:100%;border:0;border-radius:12px;background:#6c97b0;color:#fff;font-weight:800;font-size:14px;line-height:1;padding:13px 12px;cursor:pointer;box-shadow:0 2px 6px rgba(15,23,42,.16)}
+  .dir-btn:active{transform:translateY(1px);background:#5f899f}
 
   .pin{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);color:#fff;font-size:16px;line-height:28px;user-select:none;pointer-events:auto;border:2px solid rgba(0,0,0,.15)}
   .pin-blue { background:#0ea5e9; }
@@ -218,14 +396,27 @@ export default function MapScreen({ navigation }: Props) {
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@tomickigrzegorz/leaflet-rotate@0.2.3/dist/leaflet-rotate.umd.min.js"></script>
 <script>
   const NEARBY_POINTS = ${dataNearby};
   const ALL_POINTS    = ${dataAll};
-  const center = [${center.lat}, ${center.lng}];
+  let center = [${center.lat}, ${center.lng}];
 
   window.__FALLBACK = ${JSON.stringify(fallbackImageSrc)};
+  const DIRECTIONS_TEXT = ${JSON.stringify(DIRECTIONS_TXT)};
 
-  const map = L.map('map', { zoomControl:false }).setView(center, 15);
+  const map = L.map('map', {
+    zoomControl:false,
+    rotate:true,
+    bearing:0,
+    touchRotate:true,
+    preventPageGestures:true,
+    rotateControl:{
+      position:'topleft',
+      behavior:'reset',
+      closeOnZeroBearing:true
+    }
+  }).setView(center, 15);
 
   function ensureBar(){ const bar = document.getElementById('bar'); if (bar){ bar.style.display='grid'; bar.style.zIndex='99999'; } }
   ensureBar(); map.whenReady(ensureBar); setTimeout(ensureBar,0); setTimeout(ensureBar,300);
@@ -256,8 +447,14 @@ export default function MapScreen({ navigation }: Props) {
   map.whenReady(()=>applyFilter(${JSON.stringify(MAP_FILTER)}));
   map.on('layeradd',()=>applyFilter(${JSON.stringify(MAP_FILTER)}));
 
-  L.circleMarker(center,{radius:7,weight:2,color:'#0ea5e9',fillColor:'#0ea5e9',fillOpacity:.3})
+  const userMarker = L.circleMarker(center,{radius:7,weight:2,color:'#0ea5e9',fillColor:'#0ea5e9',fillOpacity:.3})
     .addTo(map).bindPopup('You are here');
+  window.updateUserPosition=(lat,lng,recenter)=>{
+    if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    center = [lat, lng];
+    userMarker.setLatLng(center);
+    if(recenter) map.setView(center, map.getZoom());
+  };
 
   const makeIcon = (c)=> L.divIcon({ className:'pin pin-'+c, html:'💧', iconSize:[28,28], iconAnchor:[14,14] });
   const ICONS = { blue:makeIcon('blue'), red:makeIcon('red'), gold:makeIcon('gold') };
@@ -305,6 +502,13 @@ export default function MapScreen({ navigation }: Props) {
       .replace(/>/g,'&gt;');
   }
 
+  function escapeHtml(value){
+    return String(value)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;');
+  }
+
   function imgTagFor(p){
     const src = hasPhotoUrl(p.ext) ? p.ext.trim() : window.__FALLBACK;
     return '<img class="photo" src="'+escapeAttr(src)+'" alt="fountain" '+
@@ -322,11 +526,12 @@ export default function MapScreen({ navigation }: Props) {
       const html =
         '<div class="card" data-id="'+p.id+'">'+
           imgTagFor(p)+
-          '<div class="title">'+(p.title||'Fountain')+'</div>'+
-          (p.note ? '<div class="note">'+p.note+'</div>' : '')+
+          '<div class="title">'+escapeHtml(p.title||'Fountain')+'</div>'+
+          (p.note ? '<div class="note">'+escapeHtml(p.note)+'</div>' : '')+
           starsRow(p.id, ratingMap[p.id]||0)+
+          '<button class="dir-btn" type="button" data-lat="'+p.lat+'" data-lng="'+p.lng+'">'+escapeHtml(DIRECTIONS_TEXT)+'</button>'+
         '</div>';
-      m.bindPopup(html,{maxWidth:320,autoPan:true,closeButton:true});
+      m.bindPopup(html,{maxWidth:320,autoPan:true,autoPanPaddingBottomRight:L.point(20,110),closeButton:true});
 
       m.on('popupopen', ()=>{
         window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type:'getRating', id:p.id}));
@@ -340,6 +545,14 @@ export default function MapScreen({ navigation }: Props) {
           updateStarsInDom(p.id,v); setMarkerColorByRating(p.id,v);
           window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type:'setRatingOnce', id:p.id, value:v}));
         });
+        const dirBtn=document.querySelector('.card[data-id="'+p.id+'"] .dir-btn');
+        if(dirBtn){
+          dirBtn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type:'directions', lat:p.lat, lng:p.lng}));
+          });
+        }
       });
     });
   }
@@ -366,7 +579,7 @@ export default function MapScreen({ navigation }: Props) {
 </body>
 </html>`;
     // eslint-disable-next-line
-  }, [fallbackSrc, nearby, userPos, t]);
+  }, [fallbackSrc, lang, nearby, userPos, t]);
 
   const onMessage = async (e: WebViewMessageEvent) => {
     try {
@@ -385,6 +598,22 @@ export default function MapScreen({ navigation }: Props) {
       }
       if (msg.type === "goMenu") {
         navigation.replace("Menu");
+      }
+      if (msg.type === "directions" && Number.isFinite(msg.lat) && Number.isFinite(msg.lng)) {
+        const lat = Number(msg.lat);
+        const lng = Number(msg.lng);
+        const googleNavigationUrl = `google.navigation:q=${lat},${lng}&mode=w`;
+        const webDirectionsUrl =
+          `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+            `${lat},${lng}`
+          )}&travelmode=walking`;
+
+        try {
+          const canOpenGoogleNavigation = await Linking.canOpenURL(googleNavigationUrl);
+          await Linking.openURL(canOpenGoogleNavigation ? googleNavigationUrl : webDirectionsUrl);
+        } catch {
+          await Linking.openURL(webDirectionsUrl);
+        }
       }
     } catch {}
   };
@@ -408,6 +637,12 @@ export default function MapScreen({ navigation }: Props) {
           javaScriptEnabled
           domStorageEnabled
           onMessage={onMessage}
+          onLoadEnd={() => {
+            const latestPosition = userPosRef.current;
+            if (latestPosition) {
+              applyUserPosition(latestPosition);
+            }
+          }}
         />
       </View>
       {/* подпорка снизу (оставляем как у тебя) */}
